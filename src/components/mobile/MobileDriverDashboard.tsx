@@ -47,6 +47,8 @@ interface OrderAssignment {
   expires_at: string;
   estimated_time: number;
   isTestOrder?: boolean; // Add test order flag
+  escalation_message?: string;
+  tips_included?: boolean;
 }
 export const MobileDriverDashboard: React.FC = () => {
   // Production readiness hooks
@@ -423,7 +425,9 @@ export const MobileDriverDashboard: React.FC = () => {
         distance_mi: payload.payload.distance_mi,
         expires_at: payload.payload.expires_at,
         estimated_time: payload.payload.estimated_time,
-        isTestOrder: payload.payload.isTestOrder // Add test order flag
+        isTestOrder: payload.payload.isTestOrder, // Add test order flag
+        escalation_message: payload.payload.escalation_message,
+        tips_included: payload.payload.tips_included,
       });
       setShowOrderModal(true);
 
@@ -472,7 +476,8 @@ export const MobileDriverDashboard: React.FC = () => {
           distance_km: Number(order.distance_km) || 0,
           distance_mi: ((Number(order.distance_km) || 0) * 0.621371).toFixed(1),
           expires_at: assignment.expires_at,
-          estimated_time: Math.ceil((Number(order.distance_km) || 0) * 2.5)
+          estimated_time: Math.ceil((Number(order.distance_km) || 0) * 2.5),
+          tips_included: true,
         });
         setShowOrderModal(true);
 
@@ -1334,7 +1339,27 @@ export const MobileDriverDashboard: React.FC = () => {
       <OrderAssignmentModal isOpen={showOrderModal} onClose={() => {
         setShowOrderModal(false);
         setCurrentOrderAssignment(null);
-      }} assignment={currentOrderAssignment} onAccept={assignment => {
+      }} assignment={currentOrderAssignment} onAccept={async (assignment) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No authenticated driver');
+
+        const { error: acceptError } = await supabase
+          .from('order_assignments')
+          .update({ status: 'accepted' })
+          .eq('id', assignment.assignment_id)
+          .eq('driver_id', user.id);
+
+        if (acceptError) throw acceptError;
+
+        await supabase
+          .from('orders')
+          .update({
+            driver_id: user.id,
+            assigned_craver_id: user.id,
+            order_status: 'confirmed',
+          })
+          .eq('id', assignment.order_id);
+
         setActiveDelivery({
           ...assignment,
           order_id: assignment.order_id,
@@ -1349,7 +1374,18 @@ export const MobileDriverDashboard: React.FC = () => {
         setDriverState('on_delivery');
         setShowOrderModal(false);
         setCurrentOrderAssignment(null);
-      }} onDecline={() => {
+      }} onDecline={async (assignment) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No authenticated driver');
+
+        const { error: declineError } = await supabase
+          .from('order_assignments')
+          .update({ status: 'declined' })
+          .eq('id', assignment.assignment_id)
+          .eq('driver_id', user.id);
+
+        if (declineError) throw declineError;
+
         setShowOrderModal(false);
         setCurrentOrderAssignment(null);
       }} />

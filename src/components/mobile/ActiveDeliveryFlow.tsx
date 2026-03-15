@@ -333,7 +333,20 @@ const ActiveDeliveryFlow = ({ orderDetails, onCompleteDelivery, onProgressChange
             variant="primary" 
             size="lg" 
             fullWidth
-            onClick={() => setCurrentStage('arrived_at_restaurant')}
+            onClick={async () => {
+              try {
+                if (orderDetails?.assignment_id) {
+                  await supabase
+                    .from('order_assignments')
+                    .update({ arrived_at_restaurant_at: new Date().toISOString() } as any)
+                    .eq('id', orderDetails.assignment_id);
+                }
+              } catch (error) {
+                console.error('Failed to record restaurant arrival timestamp', error);
+              } finally {
+                setCurrentStage('arrived_at_restaurant');
+              }
+            }}
           >
             <CheckCircle className="h-5 w-5 mr-2" />
             I've Arrived
@@ -527,7 +540,21 @@ const ActiveDeliveryFlow = ({ orderDetails, onCompleteDelivery, onProgressChange
             variant="success" 
             size="lg" 
             fullWidth
-            onClick={() => setCurrentStage(type === 'pickup' ? 'navigate_to_customer' : 'delivered')}
+            onClick={async () => {
+              if (type === 'pickup') {
+                try {
+                  if (orderDetails?.order_id) {
+                    await supabase
+                      .from('orders')
+                      .update({ pickup_confirmed_at: new Date().toISOString() } as any)
+                      .eq('id', orderDetails.order_id);
+                  }
+                } catch (error) {
+                  console.error('Failed to record pickup confirmation timestamp', error);
+                }
+              }
+              setCurrentStage(type === 'pickup' ? 'navigate_to_customer' : 'delivered');
+            }}
           >
             <CheckCircle className="h-5 w-5 mr-2" />
             Continue
