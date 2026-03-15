@@ -32,8 +32,10 @@ const DriverGuide = () => {
           <CardHeader><CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" />Earning Money</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-2">
-              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Base pay per delivery + distance bonuses</span></li>
-              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Keep 100% of customer tips</span></li>
+              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Starting offer formula: $3.50 base + $1.00 per mile (market configurable)</span></li>
+              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>You always see full payout before accepting, including 100% of tips</span></li>
+              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>If orders are declined, payout escalates and shows "Payout increased due to driver demand."</span></li>
+              <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Wait pay: after 10 minutes at restaurant, earn $1 per minute waited</span></li>
               <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Instant cashout available</span></li>
               <li className="flex items-start gap-2"><CheckCircle className="h-5 w-5 text-green-600" /><span>Daily automatic payouts</span></li>
             </ul>

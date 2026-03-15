@@ -16,14 +16,16 @@ interface OrderAssignment {
   expires_at: string;
   estimated_time: number;
   isTestOrder?: boolean;
+  escalation_message?: string;
+  tips_included?: boolean;
 }
 
 interface OrderAssignmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   assignment: OrderAssignment | null;
-  onAccept: (assignment: OrderAssignment) => void;
-  onDecline: (assignment: OrderAssignment) => void;
+  onAccept: (assignment: OrderAssignment) => Promise<void> | void;
+  onDecline: (assignment: OrderAssignment) => Promise<void> | void;
 }
 
 export const OrderAssignmentModal: React.FC<OrderAssignmentModalProps> = ({
@@ -37,8 +39,6 @@ export const OrderAssignmentModal: React.FC<OrderAssignmentModalProps> = ({
   const { toast } = useToast();
 
   // Earnings + routing state
-  const [payoutPercent, setPayoutPercent] = useState<number>(70);
-  const [subtotalCents, setSubtotalCents] = useState<number>(0);
   const [tipCents, setTipCents] = useState<number>(0);
   const [routeMiles, setRouteMiles] = useState<number | null>(null);
   const [routeMins, setRouteMins] = useState<number | null>(null);
@@ -50,23 +50,14 @@ export const OrderAssignmentModal: React.FC<OrderAssignmentModalProps> = ({
 
     const run = async () => {
       try {
-        // Get active payout percentage
-        const { data: setting } = await supabase
-          .from('driver_payout_settings')
-          .select('percentage')
-          .eq('is_active', true)
-          .maybeSingle();
-        if (setting?.percentage != null) setPayoutPercent(Number(setting.percentage));
-
-        // Get order details
+        // Get order details for supplementary context
         const { data: order } = await supabase
           .from('orders')
-          .select('subtotal_cents, tip_cents, dropoff_address, pickup_address')
+          .select('tip_cents, dropoff_address, pickup_address')
           .eq('id', assignment.order_id)
           .maybeSingle();
 
         if (order) {
-          setSubtotalCents(Number(order.subtotal_cents || 0));
           setTipCents(Number(order.tip_cents || 0));
 
           const dAddr: any = order.dropoff_address;
@@ -204,23 +195,33 @@ export const OrderAssignmentModal: React.FC<OrderAssignmentModalProps> = ({
     return () => clearInterval(timer);
   }, [isOpen, assignment]);
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (assignment) {
-      onAccept(assignment);
-      toast({ title: "Order Accepted!", description: "Navigate to the pickup location." });
+      try {
+        await onAccept(assignment);
+        toast({ title: "Order Accepted!", description: "Navigate to the pickup location." });
+      } catch (error) {
+        console.error('accept assignment failed', error);
+        toast({ title: "Accept failed", description: "Please try again.", variant: "destructive" });
+      }
     }
   };
 
-  const handleDecline = () => {
+  const handleDecline = async () => {
     if (assignment) {
-      onDecline(assignment);
-      toast({ title: "Order Declined", description: "Looking for new offers..." });
+      try {
+        await onDecline(assignment);
+        toast({ title: "Order Declined", description: "Looking for new offers..." });
+      } catch (error) {
+        console.error('decline assignment failed', error);
+        toast({ title: "Decline failed", description: "Please try again.", variant: "destructive" });
+      }
     }
   };
 
   if (!isOpen || !assignment) return null;
 
-  const estimatedPayout = (((payoutPercent / 100) * subtotalCents + tipCents) / 100).toFixed(2);
+  const estimatedPayout = (Number(assignment.payout_cents || 0) / 100).toFixed(2);
   const milesParsed = parseFloat(assignment.distance_mi || '0') || 0;
   const miles = routeMiles ?? milesParsed;
   const mins = routeMins ?? (assignment.estimated_time || 0);
@@ -282,7 +283,17 @@ export const OrderAssignmentModal: React.FC<OrderAssignmentModalProps> = ({
               <DollarSign className="h-8 w-8 text-green-600" />
               <span className="text-5xl font-bold text-gray-900">${estimatedPayout}</span>
             </div>
-            <p className="text-center text-sm text-gray-600">Estimated earnings</p>
+            <p className="text-center text-sm text-gray-600">Full payout shown before accept (tips included)</p>
+            {assignment.escalation_message && (
+              <p className="text-center text-xs text-orange-700 font-medium mt-2">
+                {assignment.escalation_message}
+              </p>
+            )}
+            {tipCents > 0 && (
+              <p className="text-center text-xs text-gray-500 mt-1">
+                Includes ${((tipCents || 0) / 100).toFixed(2)} customer tip
+              </p>
+            )}
             
             <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-green-200">
               <div className="text-center">

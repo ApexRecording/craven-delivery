@@ -11,6 +11,126 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type DriverPaySettings = {
+  base_offer_cents: number;
+  per_mile_cents: number;
+  escalation_interval_minutes: number;
+  escalation_sequence_cents: number[];
+  max_offer_cents: number | null;
+};
+
+const DEFAULT_DRIVER_PAY_SETTINGS: DriverPaySettings = {
+  base_offer_cents: 350,
+  per_mile_cents: 100,
+  escalation_interval_minutes: 2,
+  escalation_sequence_cents: [100, 125, 125, 150],
+  max_offer_cents: null,
+};
+
+function normalizeDriverPaySettings(row: any): DriverPaySettings {
+  const sequenceRaw = Array.isArray(row?.escalation_sequence_cents)
+    ? row.escalation_sequence_cents
+    : DEFAULT_DRIVER_PAY_SETTINGS.escalation_sequence_cents;
+
+  const escalation_sequence_cents = sequenceRaw
+    .map((value: any) => Number(value))
+    .filter((value: number) => Number.isFinite(value) && value >= 0);
+
+  return {
+    base_offer_cents: Number(row?.base_offer_cents ?? DEFAULT_DRIVER_PAY_SETTINGS.base_offer_cents),
+    per_mile_cents: Number(row?.per_mile_cents ?? DEFAULT_DRIVER_PAY_SETTINGS.per_mile_cents),
+    escalation_interval_minutes: Math.max(
+      1,
+      Number(row?.escalation_interval_minutes ?? DEFAULT_DRIVER_PAY_SETTINGS.escalation_interval_minutes)
+    ),
+    escalation_sequence_cents: escalation_sequence_cents.length
+      ? escalation_sequence_cents
+      : DEFAULT_DRIVER_PAY_SETTINGS.escalation_sequence_cents,
+    max_offer_cents: row?.max_offer_cents == null ? null : Number(row.max_offer_cents),
+  };
+}
+
+async function getDriverPaySettings(supabase: any): Promise<DriverPaySettings> {
+  const { data } = await supabase
+    .from('driver_payout_settings')
+    .select('base_offer_cents, per_mile_cents, escalation_interval_minutes, escalation_sequence_cents, max_offer_cents')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  return normalizeDriverPaySettings(data);
+}
+
+function getOrderDistanceMiles(order: any): number {
+  const distanceKm = Number(order?.distance_km ?? 0);
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return 0;
+  return distanceKm * 0.621371;
+}
+
+function calculateInitialOfferCents(order: any, settings: DriverPaySettings): number {
+  const tipCents = Math.max(0, Number(order?.tip_cents ?? 0));
+  const distanceMiles = getOrderDistanceMiles(order);
+  const distanceComponent = Math.round(distanceMiles * settings.per_mile_cents);
+  return Math.max(0, settings.base_offer_cents + distanceComponent + tipCents);
+}
+
+async function ensureOrderHasFrameworkStartingOffer(supabase: any, order: any, settings: DriverPaySettings): Promise<number> {
+  const frameworkStart = calculateInitialOfferCents(order, settings);
+  const currentPayout = Number(order?.payout_cents ?? 0);
+  const nextPayout = currentPayout > 0 ? Math.max(currentPayout, frameworkStart) : frameworkStart;
+
+  if (nextPayout !== currentPayout) {
+    await supabase
+      .from('orders')
+      .update({ payout_cents: nextPayout })
+      .eq('id', order.id);
+  }
+
+  return nextPayout;
+}
+
+async function escalateOrderPayoutIfNeeded(supabase: any, orderId: string, settings: DriverPaySettings) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, payout_cents')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return null;
+
+  const { count } = await supabase
+    .from('order_assignments')
+    .select('*', { count: 'exact', head: true })
+    .eq('order_id', orderId)
+    .in('status', ['declined', 'expired']);
+
+  const rejectedOrExpiredCount = Number(count ?? 0);
+  if (rejectedOrExpiredCount <= 0) return null;
+
+  const sequence = settings.escalation_sequence_cents;
+  const sequenceIndex = Math.min(rejectedOrExpiredCount - 1, sequence.length - 1);
+  const increment = sequence[Math.max(0, sequenceIndex)] ?? 0;
+  if (increment <= 0) return null;
+
+  const currentPayout = Number(order.payout_cents ?? 0);
+  const candidatePayout = currentPayout + increment;
+  const cappedPayout = settings.max_offer_cents != null
+    ? Math.min(candidatePayout, settings.max_offer_cents)
+    : candidatePayout;
+
+  if (cappedPayout <= currentPayout) return null;
+
+  await supabase
+    .from('orders')
+    .update({ payout_cents: cappedPayout })
+    .eq('id', orderId);
+
+  return {
+    previous_payout_cents: currentPayout,
+    payout_cents: cappedPayout,
+    escalation_message: 'Payout increased due to driver demand.',
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -33,6 +153,9 @@ serve(async (req) => {
     if (orderError || !order) throw new Error('Order not found or not pending');
 
     const restaurant = order.restaurants;
+    const paySettings = await getDriverPaySettings(supabase);
+    const startingPayoutCents = await ensureOrderHasFrameworkStartingOffer(supabase, order, paySettings);
+    order.payout_cents = startingPayoutCents;
 
     // Get available online drivers
     const { data: availableDrivers, error: driversError } = await supabase
@@ -100,6 +223,7 @@ serve(async (req) => {
           .select()
           .single();
 
+        const orderDistanceKm = Number(order.distance_km ?? 0);
         const notificationPayload = {
           type: 'order_assignment',
           assignment_id: assignment.id,
@@ -108,10 +232,11 @@ serve(async (req) => {
           pickup_address: order.pickup_address,
           dropoff_address: order.dropoff_address,
           payout_cents: order.payout_cents,
-          distance_km: order.distance_km,
-          distance_mi: (order.distance_km * 0.621371).toFixed(1),
+          distance_km: orderDistanceKm,
+          distance_mi: (orderDistanceKm * 0.621371).toFixed(1),
           expires_at: assignment.expires_at,
-          estimated_time: Math.ceil(order.distance_km * 2.5)
+          estimated_time: Math.ceil(orderDistanceKm * 2.5),
+          tips_included: true,
         };
 
         // Send real-time notification via persistent channel (driver-specific)
@@ -148,7 +273,15 @@ serve(async (req) => {
         console.log(`Order assigned to driver: ${driver.user_id} with priority ${driver.priority}`);
 
         // Set up background monitoring without blocking POS response
-        EdgeRuntime.waitUntil(monitorAssignmentAcceptance(supabase, assignment.id, orderId, driversWithDistance.slice(driversWithDistance.indexOf(driver) + 1)));
+        EdgeRuntime.waitUntil(
+          monitorAssignmentAcceptance(
+            supabase,
+            assignment.id,
+            orderId,
+            driversWithDistance.slice(driversWithDistance.indexOf(driver) + 1),
+            paySettings
+          )
+        );
 
         return new Response(JSON.stringify({
           success: true,
@@ -175,7 +308,13 @@ serve(async (req) => {
 });
 
 // Monitor assignment acceptance in background and handle fallback to next driver
-async function monitorAssignmentAcceptance(supabase, assignmentId: string, orderId: string, remainingDrivers: any[]) {
+async function monitorAssignmentAcceptance(
+  supabase,
+  assignmentId: string,
+  orderId: string,
+  remainingDrivers: any[],
+  paySettings: DriverPaySettings
+) {
   const interval = 2000; // Check every 2 seconds
   const maxChecks = 22; // 45 seconds total (45/2 = 22.5)
   let checks = 0;
@@ -212,21 +351,29 @@ async function monitorAssignmentAcceptance(supabase, assignmentId: string, order
     .update({ status: 'expired' })
     .eq('id', assignmentId);
 
+  const escalation = await escalateOrderPayoutIfNeeded(supabase, orderId, paySettings);
+
   // Try next available drivers if any
   if (remainingDrivers.length > 0) {
     console.log(`Assignment expired, trying next ${remainingDrivers.length} drivers`);
-    await assignToNextDriver(supabase, orderId, remainingDrivers);
+    await assignToNextDriver(supabase, orderId, remainingDrivers, paySettings, escalation?.escalation_message);
   } else {
     console.log(`No remaining drivers in current list, initiating continuous retry for order ${orderId}`);
     // Start continuous retry cycle instead of giving up
-    await continuousOrderAssignment(supabase, orderId);
+    await continuousOrderAssignment(supabase, orderId, paySettings);
   }
   
   return false;
 }
 
 // Assign order to next available driver in the list
-async function assignToNextDriver(supabase, orderId: string, drivers: any[]) {
+async function assignToNextDriver(
+  supabase,
+  orderId: string,
+  drivers: any[],
+  paySettings: DriverPaySettings,
+  escalationMessage?: string
+) {
   for (const driver of drivers) {
     try {
       const expiresAt = new Date();
@@ -253,6 +400,7 @@ async function assignToNextDriver(supabase, orderId: string, drivers: any[]) {
       if (!order) continue;
 
       const restaurant = order.restaurants;
+      const orderDistanceKm = Number(order.distance_km ?? 0);
       const notificationPayload = {
         type: 'order_assignment',
         assignment_id: assignment.id,
@@ -261,10 +409,12 @@ async function assignToNextDriver(supabase, orderId: string, drivers: any[]) {
         pickup_address: order.pickup_address,
         dropoff_address: order.dropoff_address,
         payout_cents: order.payout_cents,
-        distance_km: order.distance_km,
-        distance_mi: (order.distance_km * 0.621371).toFixed(1),
+        distance_km: orderDistanceKm,
+        distance_mi: (orderDistanceKm * 0.621371).toFixed(1),
         expires_at: assignment.expires_at,
-        estimated_time: Math.ceil(order.distance_km * 2.5)
+        estimated_time: Math.ceil(orderDistanceKm * 2.5),
+        escalation_message: escalationMessage,
+        tips_included: true,
       };
 
       // Send notifications
@@ -300,7 +450,9 @@ async function assignToNextDriver(supabase, orderId: string, drivers: any[]) {
       
       // Continue monitoring this new assignment
       const remainingDrivers = drivers.slice(drivers.indexOf(driver) + 1);
-      EdgeRuntime.waitUntil(monitorAssignmentAcceptance(supabase, assignment.id, orderId, remainingDrivers));
+      EdgeRuntime.waitUntil(
+        monitorAssignmentAcceptance(supabase, assignment.id, orderId, remainingDrivers, paySettings)
+      );
       
       return true;
     } catch (error) {
@@ -311,15 +463,20 @@ async function assignToNextDriver(supabase, orderId: string, drivers: any[]) {
   
   // If we've exhausted this batch of drivers, start continuous retry
   console.log(`Exhausted current driver batch, starting continuous retry for order ${orderId}`);
-  EdgeRuntime.waitUntil(continuousOrderAssignment(supabase, orderId));
+  EdgeRuntime.waitUntil(continuousOrderAssignment(supabase, orderId, paySettings));
   return false;
 }
 
 // Continuous order assignment - keeps trying until order is accepted or cancelled
-async function continuousOrderAssignment(supabase, orderId: string, searchRadius: number = 10) {
+async function continuousOrderAssignment(
+  supabase,
+  orderId: string,
+  paySettings: DriverPaySettings,
+  searchRadius: number = 10
+) {
   const maxSearchRadius = 50; // Max 50 miles
-  const baseRetryInterval = 30000; // 30 seconds between attempts
-  const maxRetries = 120; // 60 minutes total (120 * 30s = 3600s)
+  const baseRetryInterval = paySettings.escalation_interval_minutes * 60 * 1000;
+  const maxRetries = 120; // Safety cap for prolonged retries
   let retryCount = 0;
   let currentRadius = searchRadius;
 
@@ -414,7 +571,16 @@ async function continuousOrderAssignment(supabase, orderId: string, searchRadius
           console.log(`Found ${driversWithDistance.length} drivers within ${currentRadius} miles for order ${orderId}`);
           
           // Try to assign to the best available driver
-          const success = await assignToNextDriver(supabase, orderId, driversWithDistance);
+          const escalation = retryCount > 0
+            ? await escalateOrderPayoutIfNeeded(supabase, orderId, paySettings)
+            : null;
+          const success = await assignToNextDriver(
+            supabase,
+            orderId,
+            driversWithDistance,
+            paySettings,
+            escalation?.escalation_message
+          );
           if (success) {
             console.log(`Continuous assignment successful for order ${orderId}`);
             return;
