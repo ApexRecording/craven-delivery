@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Check, Info, Target, DollarSign, ShoppingBag, Zap, Shield } from "lucide-react";
+import { AlertCircle, Check, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantData } from "@/hooks/useRestaurantData";
 import { toast } from "sonner";
-import { CraveMoreText } from "@/components/ui/cravemore-text";
 
 interface PricingPlan {
   id: string;
@@ -15,7 +14,7 @@ interface PricingPlan {
   delivery_commission_percent: number;
   pickup_commission_percent: number;
   monthly_fee_cents: number;
-  features: any;
+  features: string[] | null;
   display_order: number;
 }
 
@@ -53,6 +52,9 @@ const PricingPlansDashboard = () => {
       setLoadingPlans(false);
     }
   };
+
+  const formatTier = (tier: string) =>
+    tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 
   if (loading || loadingPlans) {
     return (
@@ -153,182 +155,60 @@ const PricingPlansDashboard = () => {
 
         <TabsContent value="all-plans" className="space-y-6 mt-6">
           <h2 className="text-2xl font-bold">All plans</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Basic Plan */}
-            <Card className={currentPlan?.tier === 'basic' ? 'border-primary border-2' : ''}>
-              <CardContent className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold mb-1">Basic</h3>
-                  <p className="text-sm text-muted-foreground">Save on cost</p>
-                  <p className="text-sm text-muted-foreground">Offer delivery and pickup to customers who already know you</p>
-                </div>
 
-                {/* What you pay */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">What you pay</span>
-                  </div>
-                  <p className="text-sm">15% commission per delivery order</p>
-                  <p className="text-sm">6% commission per pickup order</p>
-                </div>
-
-                {/* Standard reach */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Standard reach</span>
-                  </div>
-                  <p className="text-sm">Reach customers close to you</p>
-                </div>
-
-                {/* Customers pay higher fees */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Customers pay higher fees</span>
-                  </div>
-                  <p className="text-sm">Customers pay more for delivery when ordering from you</p>
-                </div>
-
-                {/* Online ordering */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Online ordering</span>
-                  </div>
-                  <p className="text-sm">Get commission-free online ordering through your own website. You only pay payment processing fees.</p>
-                </div>
+          {plans.length === 0 ? (
+            <Card>
+              <CardContent className="p-10 text-center text-muted-foreground">
+                No pricing plans are configured yet.
               </CardContent>
             </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {plans.map((plan) => (
+                <Card
+                  key={plan.id}
+                  className={currentPlan?.tier === plan.tier ? "border-primary border-2" : ""}
+                >
+                  <CardContent className="p-6 space-y-6">
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
+                      <p className="text-sm text-muted-foreground">{formatTier(plan.tier)} plan</p>
+                    </div>
 
-            {/* Plus Plan */}
-            <Card className={currentPlan?.tier === 'plus' ? 'border-primary border-2' : ''}>
-              <CardContent className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold mb-1">Plus</h3>
-                  <p className="text-sm text-muted-foreground">Reach more customers</p>
-                  <p className="text-sm text-muted-foreground">Get discovered by new customers in your local area</p>
-                </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Info className="w-4 h-4 text-primary" />
+                        <span className="font-semibold text-sm">What you pay</span>
+                      </div>
+                      <p className="text-sm">
+                        {plan.delivery_commission_percent}% commission per delivery order
+                      </p>
+                      <p className="text-sm">
+                        {plan.pickup_commission_percent}% commission per pickup order
+                      </p>
+                      <p className="text-sm">
+                        ${((plan.monthly_fee_cents || 0) / 100).toFixed(2)} monthly subscription fee
+                      </p>
+                    </div>
 
-                {/* What you pay */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">What you pay</span>
-                  </div>
-                  <p className="text-sm">25% commission per delivery order</p>
-                  <p className="text-sm">5% commission per pickup order</p>
-                </div>
-
-                {/* Expanded reach */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Expanded reach</span>
-                  </div>
-                  <p className="text-sm">Reach customers across your local area</p>
-                </div>
-
-                {/* Customers pay lower fees */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Customers pay lower fees</span>
-                  </div>
-                  <p className="text-sm">Customers pay less for delivery when ordering from you</p>
-                </div>
-
-                {/* Online ordering */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Online ordering</span>
-                  </div>
-                  <p className="text-sm">Get commission-free online ordering through your own website. You only pay payment processing fees.</p>
-                </div>
-
-                {/* Access to CraveMore members */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Access to <CraveMoreText /> members</span>
-                  </div>
-                  <p className="text-sm">Businesses with <CraveMoreText /> typically see a 30% increase in earnings, as members order twice as often and spend 2.5 times more annually than regular customers.</p>
-                  <p className="text-sm">You'll be promoted with $0 delivery and lower service fees, making it easier for customers to find you on Crave'N.</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Premier Plan */}
-            <Card className={currentPlan?.tier === 'premier' ? 'border-primary border-2' : ''}>
-              <CardContent className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold mb-1">Premier</h3>
-                  <p className="text-sm text-muted-foreground">Maximize sales</p>
-                  <p className="text-sm text-muted-foreground">Stand out to new customers</p>
-                </div>
-
-                {/* What you pay */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">What you pay</span>
-                  </div>
-                  <p className="text-sm">30% commission per delivery order</p>
-                  <p className="text-sm">5% commission per pickup order</p>
-                </div>
-
-                {/* Maximum reach */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Maximum reach</span>
-                  </div>
-                  <p className="text-sm">Reach customers farther from your local area</p>
-                </div>
-
-                {/* Customers pay the lowest fees */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Customers pay the lowest fees</span>
-                  </div>
-                  <p className="text-sm">Customers pay the least for delivery when ordering from you</p>
-                </div>
-
-                {/* Online ordering */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Online ordering</span>
-                  </div>
-                  <p className="text-sm">Get commission-free online ordering through your own website. You only pay payment processing fees.</p>
-                </div>
-
-                {/* Access to CraveMore members */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Access to <CraveMoreText /> members</span>
-                  </div>
-                  <p className="text-sm">Businesses with <CraveMoreText /> typically see a 30% increase in earnings, as members order twice as often and spend 2.5 times more annually than regular customers.</p>
-                  <p className="text-sm">You'll be promoted with $0 delivery and lower service fees, making it easier for customers to find you on Crave'N.</p>
-                </div>
-
-                {/* 6-month order guarantee */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">6-month order guarantee</span>
-                  </div>
-                  <p className="text-sm">If you receive fewer than 20 orders in any of your first 6 months, we'll refund your entire commission for that month.</p>
-                  <a href="#" className="text-sm text-primary underline">Learn more</a>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                    {Array.isArray(plan.features) && plan.features.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="font-semibold text-sm">Plan features</span>
+                        <ul className="space-y-2">
+                          {plan.features.map((feature, index) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                              <span className="text-sm">{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
