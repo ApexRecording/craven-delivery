@@ -18,6 +18,7 @@ import MobileBackgroundCheckStatus from "./components/mobile/MobileBackgroundChe
 import AccessGuard from "./components/AccessGuard";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
+import ChiefPartnershipPortal from "./pages/ChiefPartnershipPortal";
 import RestaurantRegister from "./pages/RestaurantRegister";
 import MerchantPortal from "./pages/MerchantPortal";
 import RestaurantDashboard from "./pages/RestaurantDashboard";
@@ -159,6 +160,7 @@ const App = () => {
           <Route path="/restaurant/solutions" element={<SolutionsCenter />} />
           <Route path="/restaurant/most-loved" element={<MostLovedProgram />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/partnership-portal" element={<ChiefPartnershipPortal />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/track-order/:orderId" element={<TrackOrder />} />

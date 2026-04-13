@@ -4091,6 +4091,154 @@ export type Database = {
         }
         Relationships: []
       }
+      vendors: {
+        Row: {
+          id: string
+          name: string
+          contact_name: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          category: string
+          status: string
+          website: string | null
+          address: string | null
+          city: string | null
+          state: string | null
+          zip_code: string | null
+          contract_start_date: string | null
+          contract_end_date: string | null
+          contract_value_cents: number | null
+          payment_terms: string | null
+          notes: string | null
+          tags: string[] | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          contact_name?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          category?: string
+          status?: string
+          website?: string | null
+          address?: string | null
+          city?: string | null
+          state?: string | null
+          zip_code?: string | null
+          contract_start_date?: string | null
+          contract_end_date?: string | null
+          contract_value_cents?: number | null
+          payment_terms?: string | null
+          notes?: string | null
+          tags?: string[] | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          contact_name?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          category?: string
+          status?: string
+          website?: string | null
+          address?: string | null
+          city?: string | null
+          state?: string | null
+          zip_code?: string | null
+          contract_start_date?: string | null
+          contract_end_date?: string | null
+          contract_value_cents?: number | null
+          payment_terms?: string | null
+          notes?: string | null
+          tags?: string[] | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vendor_contacts: {
+        Row: {
+          id: string
+          vendor_id: string
+          name: string
+          email: string | null
+          phone: string | null
+          role: string | null
+          is_primary: boolean | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          vendor_id: string
+          name: string
+          email?: string | null
+          phone?: string | null
+          role?: string | null
+          is_primary?: boolean | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          vendor_id?: string
+          name?: string
+          email?: string | null
+          phone?: string | null
+          role?: string | null
+          is_primary?: boolean | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_contacts_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_notes: {
+        Row: {
+          id: string
+          vendor_id: string
+          content: string
+          note_type: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          vendor_id: string
+          content: string
+          note_type?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          vendor_id?: string
+          content?: string
+          note_type?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_notes_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_subscriptions: {
         Row: {
           auto_renew: boolean | null
