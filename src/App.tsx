@@ -53,6 +53,7 @@ import { DownloadApp } from "./pages/DownloadApp";
 import { InstallAppBanner } from "./components/InstallAppBanner";
 import { EnhancedDriverOnboarding } from "./pages/EnhancedDriverOnboarding";
 import { AdminDriverWaitlist } from "./pages/AdminDriverWaitlist";
+import ChiefPartnershipPortal from "./pages/ChiefPartnershipPortal";
 
 // Lazy load guide pages
 const AdminGuide = lazy(() => import("./pages/AdminGuide"));
@@ -159,6 +160,7 @@ const App = () => {
           <Route path="/restaurant/solutions" element={<SolutionsCenter />} />
           <Route path="/restaurant/most-loved" element={<MostLovedProgram />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/chief-partnership-portal" element={<ChiefPartnershipPortal />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/track-order/:orderId" element={<TrackOrder />} />
