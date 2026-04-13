@@ -114,6 +114,24 @@ const Restaurants = () => {
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [filteredRestaurants, setFilteredRestaurants] = useState<any[]>([]);
   const [showAccountPopup, setShowAccountPopup] = useState(false);
+  const [nationalFavorites, setNationalFavorites] = useState<any[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(true);
+
+  // Derived filter values from activeFilter pill selection
+  const getActiveFilterProps = () => {
+    switch (activeFilter) {
+      case 'deals':
+        return { dealsOnly: true };
+      case 'rating':
+        return { minRating: 4.5 };
+      case 'time':
+        return { maxDeliveryTime: 30 };
+      case 'price':
+        return { sortBy: 'delivery_fee' };
+      default:
+        return {};
+    }
+  };
   const [accountPopupPosition, setAccountPopupPosition] = useState({ top: 0, left: 0 });
   
   const { toast } = useToast();
@@ -207,14 +225,10 @@ const Restaurants = () => {
     return cartItems.reduce((total, item) => total + (item.price || 0), 0);
   };
 
-  // Filter functionality
-  const applyFilters = () => {
-    // This would filter restaurants based on active filters
-    // For now, we'll just show a toast
-    toast({
-      title: "Filters Applied",
-      description: `Showing ${activeFilter} restaurants`,
-    });
+  // Filter functionality — updates activeFilter which drives getActiveFilterProps()
+  const applyFilters = (filterId: string) => {
+    setActiveFilter(filterId);
+    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   // Scroll functions for horizontal sections
@@ -274,10 +288,31 @@ const Restaurants = () => {
     }
   };
 
+  // Fetch top-rated active restaurants for "National favorites" section
+  const fetchNationalFavorites = async () => {
+    try {
+      setLoadingFavorites(true);
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('id, name, image_url, rating, total_reviews, min_delivery_time, max_delivery_time, delivery_fee_cents, latitude, longitude, delivery_radius_miles')
+        .eq('is_active', true)
+        .order('rating', { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      setNationalFavorites(data || []);
+    } catch (error) {
+      console.error('Error fetching national favorites:', error);
+      setNationalFavorites([]);
+    } finally {
+      setLoadingFavorites(false);
+    }
+  };
+
   // Fetch deals on component mount
   useEffect(() => {
     fetchWeeklyDeals();
     fetchNotifications();
+    fetchNationalFavorites();
   }, []);
 
   // Update filter options based on delivery mode
@@ -645,10 +680,7 @@ const Restaurants = () => {
           {filterOptions.map((filter) => (
             <button
               key={filter.id}
-              onClick={() => {
-                setActiveFilter(filter.id);
-                applyFilters();
-              }}
+              onClick={() => applyFilters(filter.id)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeFilter === filter.id
                   ? 'bg-black text-white'
@@ -690,10 +722,7 @@ const Restaurants = () => {
                 {filterOptions.map((filter) => (
                   <button
                     key={filter.id}
-                    onClick={() => {
-                      setActiveFilter(filter.id);
-                      applyFilters();
-                    }}
+                    onClick={() => applyFilters(filter.id)}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                       activeFilter === filter.id
                         ? 'bg-orange-500 text-white' 
@@ -734,85 +763,71 @@ const Restaurants = () => {
                 </button>
               </div>
 
-              {/* Featured Restaurant Cards */}
-              <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4" ref={featuredScrollRef}>
-                {[
-                  {
-                    name: "Chick-fil-A",
-                    image: "https://images.unsplash.com/photo-1562967914-608f82629710?w=300&h=200&fit=crop",
-                    rating: 4.7,
-                    reviews: "10k+",
-                    distance: "2.0 mi",
-                    time: "23 min",
-                    deliveryFee: "$4.49",
-                    freeDelivery: "$0 delivery fee over $12",
-                    badge: "Customer favorite"
-                  },
-                  {
-                    name: "Domino's",
-                    image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=300&h=200&fit=crop",
-                    rating: 4.4,
-                    reviews: "50+",
-                    distance: "1.9 mi",
-                    time: "40 min",
-                    deliveryFee: "$0.99",
-                    freeDelivery: "40% off select items",
-                    badge: null
-                  },
-                  {
-                    name: "Starbucks",
-                    image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=300&h=200&fit=crop",
-                    rating: 4.6,
-                    reviews: "200+",
-                    distance: "1.9 mi",
-                    time: "31 min",
-                    deliveryFee: "$0.49",
-                    freeDelivery: "Customer favorite",
-                    badge: "Customer favorite"
-                  },
-                  {
-                    name: "McDonald's",
-                    image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=300&h=200&fit=crop",
-                    rating: 4.0,
-                    reviews: "1k+",
-                    distance: "1.9 mi",
-                    time: "26 min",
-                    deliveryFee: "$3.99",
-                    freeDelivery: "$0 delivery fee over $12",
-                    badge: "Free item on $15+"
-                  }
-                ].map((restaurant, index) => (
-                  <div key={index} className="flex-shrink-0 w-56 sm:w-64 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <div className="h-48 overflow-hidden rounded-t-xl">
-                      <img
-                        src={restaurant.image}
-                        alt={restaurant.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className="font-semibold text-gray-900 text-sm">{restaurant.name}</h3>
-                        <ChevronRight className="w-4 h-4 text-green-500" />
-                      </div>
-                      <div className="flex items-center text-xs text-gray-600 mb-1">
-                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mr-1" />
-                        <span>{restaurant.rating} ★ ({restaurant.reviews}) • {restaurant.distance} • {restaurant.time}</span>
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-xs font-semibold text-gray-900">{restaurant.deliveryFee}</p>
-                        <p className="text-xs text-gray-600">{restaurant.freeDelivery}</p>
-                        {restaurant.badge && (
-                          <div className="flex items-center text-orange-600 font-semibold text-xs">
-                            <Plus className="w-3 h-3 mr-1" />
-                            <span>{restaurant.badge}</span>
-                          </div>
-                        )}
+              {/* Featured Restaurant Cards - loaded from database */}
+              {loadingFavorites ? (
+                <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
+                  {[...Array(4)].map((_, index) => (
+                    <div key={index} className="flex-shrink-0 w-56 sm:w-64 bg-gray-200 rounded-xl animate-pulse">
+                      <div className="h-48 bg-gray-300 rounded-t-xl"></div>
+                      <div className="p-3">
+                        <div className="h-3 bg-gray-300 rounded mb-1"></div>
+                        <div className="h-2 bg-gray-300 rounded mb-1"></div>
+                        <div className="h-2 bg-gray-300 rounded"></div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : nationalFavorites.length > 0 ? (
+                <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4" ref={featuredScrollRef}>
+                  {nationalFavorites.map((restaurant) => (
+                    <div
+                      key={restaurant.id}
+                      className="flex-shrink-0 w-56 sm:w-64 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => window.location.href = `/restaurant/${restaurant.id}`}
+                    >
+                      <div className="h-48 overflow-hidden rounded-t-xl">
+                        <img
+                          src={restaurant.image_url || `https://placehold.co/320x192/FF6B35/ffffff?text=${encodeURIComponent(restaurant.name)}`}
+                          alt={restaurant.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = `https://placehold.co/320x192/FF6B35/ffffff?text=${encodeURIComponent(restaurant.name)}`;
+                          }}
+                        />
+                      </div>
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="font-semibold text-gray-900 text-sm truncate">{restaurant.name}</h3>
+                          <ChevronRight className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        </div>
+                        <div className="flex items-center text-xs text-gray-600 mb-1">
+                          <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mr-1" />
+                          <span>
+                            {(restaurant.rating || 0).toFixed(1)} ★
+                            {restaurant.total_reviews > 0 && ` (${restaurant.total_reviews > 999 ? Math.round(restaurant.total_reviews / 1000) + 'k+' : restaurant.total_reviews + '+'}) `}
+                            {restaurant.min_delivery_time && ` • ${restaurant.min_delivery_time}-${restaurant.max_delivery_time} min`}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-semibold text-gray-900">
+                            {restaurant.delivery_fee_cents === 0 ? 'Free delivery' : `$${(restaurant.delivery_fee_cents / 100).toFixed(2)} delivery`}
+                          </p>
+                          {(restaurant.rating || 0) >= 4.5 && (
+                            <div className="flex items-center text-orange-600 font-semibold text-xs">
+                              <Plus className="w-3 h-3 mr-1" />
+                              <span>Customer favorite</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">No restaurants available right now.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -953,6 +968,8 @@ const Restaurants = () => {
                 searchQuery={searchQuery} 
                 deliveryAddress={location} 
                 cuisineFilter={cuisineFilter}
+                sortBy={sortBy}
+                {...getActiveFilterProps()}
               />
             </div>
           </div>

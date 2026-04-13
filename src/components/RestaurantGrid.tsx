@@ -20,11 +20,19 @@ interface RestaurantGridProps {
   searchQuery?: string;
   deliveryAddress?: string;
   cuisineFilter?: string;
+  sortBy?: string;
+  minRating?: number;
+  maxDeliveryTime?: number;
+  dealsOnly?: boolean;
 }
 const RestaurantGrid = ({
   searchQuery,
   deliveryAddress,
-  cuisineFilter
+  cuisineFilter,
+  sortBy = 'rating',
+  minRating,
+  maxDeliveryTime,
+  dealsOnly
 }: RestaurantGridProps = {}) => {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,7 +69,7 @@ const RestaurantGrid = ({
 
   useEffect(() => {
     fetchRestaurants();
-  }, [searchQuery, deliveryAddress, cuisineFilter, userLocation]);
+  }, [searchQuery, deliveryAddress, cuisineFilter, sortBy, minRating, maxDeliveryTime, dealsOnly, userLocation]);
   const fetchRestaurants = async () => {
     try {
       let query = (supabase as any)
@@ -79,9 +87,23 @@ const RestaurantGrid = ({
         query = query.eq('cuisine_type', cuisineFilter);
       }
 
-      const { data, error } = await query
-        .order("is_promoted", { ascending: false })
-        .order("rating", { ascending: false });
+      // Filter deals-only
+      if (dealsOnly) {
+        query = query.eq('is_promoted', true);
+      }
+
+      // Apply sort order
+      if (sortBy === 'rating') {
+        query = query.order("is_promoted", { ascending: false }).order("rating", { ascending: false });
+      } else if (sortBy === 'delivery_time') {
+        query = query.order("min_delivery_time", { ascending: true });
+      } else if (sortBy === 'delivery_fee') {
+        query = query.order("delivery_fee_cents", { ascending: true });
+      } else {
+        query = query.order("is_promoted", { ascending: false }).order("rating", { ascending: false });
+      }
+
+      const { data, error } = await query;
       
       if (error) throw error;
       
@@ -96,8 +118,22 @@ const RestaurantGrid = ({
       if (searchQuery) {
         filteredData = filteredData.filter((restaurant: Restaurant) =>
           restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          restaurant.cuisine_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          restaurant.description.toLowerCase().includes(searchQuery.toLowerCase())
+          (restaurant.cuisine_type || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (restaurant.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+
+      // Filter by minimum rating
+      if (minRating) {
+        filteredData = filteredData.filter((restaurant: Restaurant) =>
+          (restaurant.rating || 0) >= minRating
+        );
+      }
+
+      // Filter by max delivery time
+      if (maxDeliveryTime) {
+        filteredData = filteredData.filter((restaurant: Restaurant) =>
+          (restaurant.min_delivery_time || 999) <= maxDeliveryTime
         );
       }
 
